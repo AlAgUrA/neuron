@@ -1,0 +1,561 @@
+public class NeuralFactor
+
+{
+
+    #region Constructors
+
+ 
+
+    public NeuralFactor(double weight)
+
+    {
+
+        m_weight = weight;
+
+        m_delta = 0;
+
+    }
+
+ 
+
+    #endregion
+
+ 
+
+    #region Member Variables
+
+ 
+
+    private double m_weight;
+
+    private double m_delta;
+
+ 
+
+    #endregion
+
+ 
+
+    #region Properties
+
+ 
+
+    public double Weight
+
+    {
+
+        get { return m_weight; }
+
+        set { m_weight = value; }
+
+    }
+
+ 
+
+    public double Delta
+
+    {
+
+        get { return m_delta; }
+
+        set { m_delta = value; }
+
+    }
+
+ 
+
+    #endregion
+
+ 
+
+    #region Methods
+
+ 
+
+    public void ApplyDelta()
+
+    {
+
+        m_weight += m_delta;
+
+        m_delta = 0;
+
+    }
+
+ 
+
+    #endregion
+
+}public interface INeuron : INeuronSignal, INeuronReceptor
+
+{
+
+    void Pulse(INeuralLayer layer);
+
+    void ApplyLearning(INeuralLayer layer);
+
+ 
+
+    NeuralFactor Bias { get; set; }
+
+    double BiasWeight { get; set; }
+
+    double Error { get; set; }
+
+}private static double Sigmoid(double value)
+
+{
+
+      return 1 / (1 + Math.Exp(-value));
+
+}public void Pulse(INeuralLayer layer)
+
+{
+
+    lock (this)
+
+    {
+
+        m_output = 0;
+
+ 
+
+        foreach (KeyValuePair<INeuronSignal, NeuralFactor> item in m_input)
+
+            m_output += item.Key.Output * item.Value.Weight;
+
+ 
+
+        m_output += m_bias.Weight * BiasWeight;
+
+ 
+
+        m_output = Sigmoid(m_output);
+
+    }
+
+}public void Pulse(INeuralNet net)
+
+{
+
+    foreach (INeuron n in m_neurons)
+
+        n.Pulse(this);
+
+}
+
+ 
+
+public void ApplyLearning(INeuralNet net)
+
+{
+
+    foreach (INeuron n in m_neurons)
+
+        n.ApplyLearning(this);
+
+}
+public void Initialize(int randomSeed,
+
+    int inputNeuronCount, int hiddenNeuronCount, int outputNeuronCount)
+
+{
+
+    int i, j, k, layerCount;
+
+    Random rand;
+
+    INeuralLayer layer;
+
+ 
+
+    // initializations
+
+    rand = new Random(randomSeed);
+
+    m_inputLayer = new NeuralLayer();
+
+    m_outputLayer = new NeuralLayer();
+
+    m_hiddenLayer = new NeuralLayer();
+
+ 
+
+    for (i = 0; i < inputNeuronCount; i++)
+
+        m_inputLayer.Add(new Neuron());
+
+ 
+
+    for (i = 0; i < outputNeuronCount; i++)
+
+        m_outputLayer.Add(new Neuron());
+
+ 
+
+    for (i = 0; i < hiddenNeuronCount; i++)
+
+        m_hiddenLayer.Add(new Neuron());
+
+ 
+
+    // wire-up input layer to hidden layer
+
+    for (i = 0; i < m_hiddenLayer.Count; i++)
+
+        for (j = 0; j < m_inputLayer.Count; j++)
+
+            m_hiddenLayer[i].Input.Add(m_inputLayer[j],
+
+                 new NeuralFactor( rand.NextDouble()));
+
+ 
+
+    // wire-up output layer to hidden layer
+
+    for (i = 0; i < m_outputLayer.Count; i++)
+
+        for (j = 0; j < m_hiddenLayer.Count; j++)
+
+            m_outputLayer[i].Input.Add(HiddenLayer[j],
+
+                 new NeuralFactor(rand.NextDouble()));
+
+}
+public void Pulse()
+
+{
+
+    lock (this)
+
+    {
+
+        m_hiddenLayer.Pulse(this);
+
+        m_outputLayer.Pulse(this);
+
+    }
+
+}
+
+ 
+
+public void ApplyLearning()
+
+{
+
+    lock (this)
+
+    {
+
+        m_hiddenLayer.ApplyLearning(this);
+
+        m_outputLayer.ApplyLearning(this);
+
+    }
+
+}
+private void BackPropogation(double[] desiredResults)
+
+{
+
+    int i, j;
+
+    double temp, error;
+
+ 
+
+    INeuron outputNode, inputNode, hiddenNode, node, node2;
+
+ 
+
+    // Calcualte output error values
+
+    for (i = 0; i < m_outputLayer.Count; i++)
+
+    {
+
+        temp = m_outputLayer[i].Output;
+
+        m_outputLayer[i].Error = (desiredResults[i] - temp) * temp * (1.0F - temp);
+
+    }
+
+ 
+
+    // calculate hidden layer error values
+
+    for (i = 0; i < m_hiddenLayer.Count; i++)
+
+    {
+
+        node = m_hiddenLayer[i];
+
+ 
+
+        error = 0;
+
+ 
+
+        for (j = 0; j < m_outputLayer.Count; j++)
+
+        {
+
+            outputNode = m_outputLayer[j];
+
+            error += outputNode.Error * outputNode.Input[node].Weight * node.Output * (1.0 - node.Output);
+
+        }
+
+ 
+
+        node.Error = error;
+
+    }
+
+ 
+
+    // adjust output layer weight change
+
+    for (i = 0; i < m_hiddenLayer.Count; i++)
+
+    {
+
+        node = m_hiddenLayer[i];
+
+ 
+
+        for (j = 0; j < m_outputLayer.Count; j++)
+
+        {
+
+            outputNode = m_outputLayer[j];
+
+            outputNode.Input[node].Weight += m_learningRate * m_outputLayer[j].Error * node.Output;
+
+            outputNode.Bias.Delta += m_learningRate * m_outputLayer[j].Error * outputNode.Bias.Weight;
+
+        }
+
+    }
+
+ 
+
+    // adjust hidden layer weight change
+
+    for (i = 0; i < m_inputLayer.Count; i++)
+
+    {
+
+        inputNode = m_inputLayer[i];
+
+ 
+
+        for (j = 0; j < m_hiddenLayer.Count; j++)
+
+        {
+
+            hiddenNode = m_hiddenLayer[j];
+
+            hiddenNode.Input[inputNode].Weight += m_learningRate * hiddenNode.Error * inputNode.Output;
+
+            hiddenNode.Bias.Delta += m_learningRate * hiddenNode.Error * inputNode.Bias.Weight;
+
+        }
+
+    }
+}
+public void Train(double[] input, double[] desiredResult)
+
+{
+
+    int i;
+
+ 
+
+    if (input.Length != m_inputLayer.Count)
+
+        throw new ArgumentException(string.Format("Expecting {0} inputs for this net", m_inputLayer.Count));
+
+ 
+
+    // initialize data
+
+    for (i = 0; i < m_inputLayer.Count; i++)
+
+    {
+
+        Neuron n = m_inputLayer[i] as Neuron;
+
+ 
+
+        if (null != n) // maybe make interface get;set;
+
+            n.Output = input[i];
+
+    }
+
+ 
+
+    Pulse();
+
+    BackPropogation(desiredResult); 
+
+}
+
+ 
+
+public void Train(double[][] inputs, double[][] expected)
+
+{
+
+    for (int i = 0; i < inputs.Length; i++)
+
+        Train(inputs[i], expected[i]);
+
+}
+private void button1_Click(object sender, EventArgs e)
+
+{
+
+    net = new NeuralNet();
+
+    double high, mid, low;
+
+ 
+
+    high = .9;
+
+    low = .1;
+
+    mid = .5;
+
+ 
+
+    // initialize with
+
+    //   2 perception neurons
+
+    //   2 hidden layer neurons
+
+    //   1 output neuron
+
+    net.Initialize(1, 2, 2, 1);
+
+   
+
+    double[][] input = new double[4][];
+
+    input[0] = new double[] {high, high};
+
+    input[1] = new double[] {low, high};
+
+    input[2] = new double[] {high, low};
+
+    input[3] = new double[] {low, low};
+
+ 
+
+    double[][] output = new double[4][];
+
+    output[0] = new double[] { low };
+
+    output[1] = new double[] { high };
+
+    output[2] = new double[] { high };
+
+    output[3] = new double[] { low };
+
+ 
+
+    double ll, lh, hl, hh;
+
+    int count;
+
+ 
+
+    count = 0;
+
+ 
+
+    do
+
+    {
+
+        count++;
+
+ 
+
+        for (int i = 0; i < 100; i++)
+
+            net.Train(input, output);
+
+ 
+
+        net.ApplyLearning();
+
+ 
+
+        net.PerceptionLayer[0].Output = low;
+
+        net.PerceptionLayer[1].Output = low;
+
+ 
+
+        net.Pulse();
+
+ 
+
+        ll = net.OutputLayer[0].Output;
+
+ 
+
+        net.PerceptionLayer[0].Output = high;
+
+        net.PerceptionLayer[1].Output = low;
+
+ 
+
+        net.Pulse();
+
+ 
+
+        hl = net.OutputLayer[0].Output;
+
+ 
+
+        net.PerceptionLayer[0].Output = low;
+
+        net.PerceptionLayer[1].Output = high;
+
+ 
+
+        net.Pulse();
+
+ 
+
+        lh = net.OutputLayer[0].Output;
+
+ 
+
+        net.PerceptionLayer[0].Output = high;
+
+        net.PerceptionLayer[1].Output = high;
+
+ 
+
+        net.Pulse();
+
+ 
+
+        hh = net.OutputLayer[0].Output;
+
+    }
+
+    while (hh > mid || lh < mid || hl < mid || ll > mid);
+
+ 
+
+    MessageBox.Show((count*100).ToString() + " iterations required for training");
+
+}
